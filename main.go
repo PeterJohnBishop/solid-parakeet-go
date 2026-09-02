@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"solid-parakeet-go/pgdb"
 	"solid-parakeet-go/servehttp"
 
 	"github.com/joho/godotenv"
@@ -13,5 +14,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	servehttp.ServeHTTP()
+	db, err := pgdb.ConnectDB()
+	if err != nil {
+		log.Fatalf("Error connecting to postgres: %v", err)
+	}
+	servehttp.ServeHTTP(db)
 }
