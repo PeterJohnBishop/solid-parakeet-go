@@ -1,2 +1,3 @@
 # solid-parakeet-go
-A go learning repo.
+
+A free-form go learning repo.
