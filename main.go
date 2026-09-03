@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"solid-parakeet-go/pgdb"
@@ -10,11 +11,13 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	db, err := pgdb.ConnectDB()
+	db, err := pgdb.ConnectPool(ctx)
 	if err != nil {
 		log.Fatalf("Error connecting to postgres: %v", err)
 	}

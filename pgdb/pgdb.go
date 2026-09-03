@@ -2,32 +2,38 @@
 package pgdb
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func ConnectDB() (*sql.DB, error) {
-	host := os.Getenv("HOST")
-	port := os.Getenv("PORT")
-	user := os.Getenv("PG_USER")
-	password := os.Getenv("PG_PASSWORD")
-	dbname := os.Getenv("DB_NAME")
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-	db, err := sql.Open("postgres", psqlInfo)
+func ConnectPool(ctx context.Context) (*pgxpool.Pool, error) {
+	connStr := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		os.Getenv("PG_USER"),
+		os.Getenv("PG_PASSWORD"),
+		os.Getenv("HOST"),
+		os.Getenv("PORT"),
+		os.Getenv("DB_NAME"),
+	)
+
+	config, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to parse connection string: %w", err)
 	}
 
-	err = db.Ping()
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
-	fmt.Println("Successfully connected to postgres.")
-	return db, nil
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("unable to ping database: %w", err)
+	}
+
+	fmt.Println("Successfully connected to postgres via pgxpool.")
+	return pool, nil
 }
