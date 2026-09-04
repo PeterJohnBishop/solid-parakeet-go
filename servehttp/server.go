@@ -64,26 +64,63 @@ func ServeHTTP(db *pgxpool.Pool) {
 // statusHandler returns the status of the database connection
 func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	type HealthResponse struct {
-		DatabaseConnected bool `json:"database_connected"`
+		DatabaseConnected bool     `json:"database_connected"`
+		Tables            []string `json:"tables"`
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	dbConnected := s.DB != nil && s.DB.Ping(ctx) == nil
 	w.Header().Set("Content-Type", "application/json")
-	if !dbConnected {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
 
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(HealthResponse{
-		DatabaseConnected: dbConnected,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// If DB is nil or ping fails, return early
+	if s.DB == nil || s.DB.Ping(ctx) != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(HealthResponse{
+			DatabaseConnected: false,
+			Tables:            []string{},
+		})
 		return
 	}
+
+	const getTablesQuery = `
+		SELECT table_name 
+		FROM information_schema.tables 
+		WHERE table_schema = 'public';
+	`
+
+	// Query directly on s.DB instead of s.DB.Acquire() to prevent pool connection leaks
+	rows, err := s.DB.Query(ctx, getTablesQuery)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(HealthResponse{
+			DatabaseConnected: true,
+			Tables:            []string{},
+		})
+		return
+	}
+	defer rows.Close()
+
+	tables := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		tables = append(tables, name)
+	}
+
+	if err := rows.Err(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	_ = encoder.Encode(HealthResponse{
+		DatabaseConnected: true,
+		Tables:            tables,
+	})
 }

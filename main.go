@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"solid-parakeet-go/pgdb"
 	"solid-parakeet-go/servehttp"
@@ -11,7 +14,8 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	err := godotenv.Load()
 	if err != nil {
@@ -21,5 +25,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error connecting to postgres: %v", err)
 	}
+
+	pgdb.ConsumeGTFS(ctx, db)
+
 	servehttp.ServeHTTP(db)
 }
